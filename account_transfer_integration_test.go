@@ -12,7 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"takeHomeAssignment/db"
+	. "takeHomeAssignment/db"
+	. "takeHomeAssignment/entities"
 	"testing"
 )
 
@@ -64,15 +65,93 @@ func CreatePostgresContainer(ctx context.Context) (*sql.DB, error) {
 
 }
 
+func TestGetAccount(t *testing.T) {
+	tests := []struct {
+		name                 string
+		accountID            int
+		balance              float64
+		accountAlreadyExists bool
+	}{
+		{"Successfully retrieves account when account exists", 1, 100.0, true},
+		{"Fails to retrieve account when account does not exists", 1, 100.0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := CreatePostgresContainer(context.Background())
+			defer db.Close()
+
+			assert.NoError(t, err)
+
+			account := Account{AccountID: tt.accountID, Balance: tt.balance}
+			defer db.Close()
+			if tt.accountAlreadyExists {
+				// Create the account in DB first
+				err = CreateAccount(db, &account)
+				assert.NoError(t, err)
+				retrievedAccount := Account{}
+				// Ensure that retrieval of account does not throw error
+				err = QueryAccountByAccountId(db, account.AccountID, &retrievedAccount)
+				assert.NoError(t, err)
+			} else {
+				account := Account{AccountID: 1, Balance: 100.0}
+				retrievedAccount := Account{}
+				// Ensure that retrieval of account does not throw error
+				err = QueryAccountByAccountId(db, account.AccountID, &retrievedAccount)
+				assert.Error(t, err)
+			}
+
+		})
+	}
+}
+
+func TestCreateAccount(t *testing.T) {
+	tests := []struct {
+		name                 string
+		accountID            int
+		balance              float64
+		accountAlreadyExists bool
+	}{
+		{"Successfully creates account when account does not exist", 1, 100.0, false},
+		{"Fails to create account when account already exists", 1, 100.0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := CreatePostgresContainer(context.Background())
+			defer db.Close()
+
+			assert.NoError(t, err)
+
+			account := Account{AccountID: tt.accountID, Balance: tt.balance}
+			defer db.Close()
+			if tt.accountAlreadyExists {
+				// Create the account in DB first
+				err = CreateAccount(db, &account)
+				assert.NoError(t, err)
+				// Ensure that second time creation of same account throws error
+				err = CreateAccount(db, &account)
+				assert.NotNil(t, err)
+				assert.Equal(t, "account ID already exists", err.Error())
+			} else {
+				account := Account{AccountID: 1, Balance: 100.0}
+				err = CreateAccount(db, &account)
+				assert.Nil(t, err)
+			}
+
+		})
+	}
+}
+
 func TestQueryAccountByAccountId(t *testing.T) {
 	database, err := CreatePostgresContainer(context.Background())
 	defer database.Close()
 
 	assert.NoError(t, err)
-	account := db.Account{AccountID: 123, Balance: 123.0}
-	err = db.CreateAccount(database, &account)
+	account := Account{AccountID: 123, Balance: 123.0}
+	err = CreateAccount(database, &account)
 	assert.NoError(t, err)
-	val := db.Account{}
+	val := Account{}
 	err = database.QueryRow("SELECT account_id, balance FROM account_balance WHERE account_id = $1", 123).Scan(&val.AccountID, &val.Balance)
 	assert.NoError(t, err)
 	assert.Equal(t, float64(123), account.Balance)
@@ -81,52 +160,52 @@ func TestQueryAccountByAccountId(t *testing.T) {
 func TestProcessTransaction(t *testing.T) {
 	tests := []struct {
 		name          string
-		transaction   db.Transaction
-		sourceAccount db.Account
-		destAccount   db.Account
+		transaction   Transaction
+		sourceAccount Account
+		destAccount   Account
 		expectedError error
 	}{
 		{
 			name:          "Valid transaction",
-			sourceAccount: db.Account{AccountID: 1, Balance: 1000.0},
-			destAccount:   db.Account{AccountID: 2, Balance: 1000.0},
-			transaction: db.Transaction{
-				SourceAccountID:      1,
+			sourceAccount: Account{AccountID: 3, Balance: 1000.0},
+			destAccount:   Account{AccountID: 2, Balance: 1000.0},
+			transaction: Transaction{
+				SourceAccountID:      3,
 				DestinationAccountID: 2,
-				Amount:               "100.0",
+				Amount:               100.0,
 			},
 			expectedError: nil,
 		},
 		{
 			name:          "Source account not found throws error",
-			sourceAccount: db.Account{},
-			destAccount:   db.Account{AccountID: 2, Balance: 1000.0},
-			transaction: db.Transaction{
+			sourceAccount: Account{},
+			destAccount:   Account{AccountID: 2, Balance: 1000.0},
+			transaction: Transaction{
 				SourceAccountID:      3,
 				DestinationAccountID: 2,
-				Amount:               "100.0",
+				Amount:               100.0,
 			},
 			expectedError: sql.ErrNoRows,
 		},
 		{
 			name:          "Destination account not found throws error",
-			sourceAccount: db.Account{AccountID: 2, Balance: 1000.0},
-			destAccount:   db.Account{},
-			transaction: db.Transaction{
+			sourceAccount: Account{AccountID: 2, Balance: 1000.0},
+			destAccount:   Account{},
+			transaction: Transaction{
 				SourceAccountID:      1,
 				DestinationAccountID: 4,
-				Amount:               "100.0",
+				Amount:               100.0,
 			},
 			expectedError: sql.ErrNoRows,
 		},
 		{
 			name:          "Source account has insufficient balance throws error",
-			sourceAccount: db.Account{AccountID: 1, Balance: 1000.0},
-			destAccount:   db.Account{AccountID: 2, Balance: 0.0},
-			transaction: db.Transaction{
+			sourceAccount: Account{AccountID: 1, Balance: 1000.0},
+			destAccount:   Account{AccountID: 2, Balance: 0.0},
+			transaction: Transaction{
 				SourceAccountID:      2,
 				DestinationAccountID: 1,
-				Amount:               "100.0",
+				Amount:               100.0,
 			},
 			expectedError: &pq.Error{},
 		},
@@ -139,16 +218,16 @@ func TestProcessTransaction(t *testing.T) {
 			assert.NoError(t, err)
 
 			if tt.name != "Source account not found throws error" {
-				err = db.CreateAccount(database, &tt.sourceAccount)
+				err = CreateAccount(database, &tt.sourceAccount)
 				assert.NoError(t, err)
 			}
 			if tt.name != "Destination account not found throws error" {
-				err = db.CreateAccount(database, &tt.destAccount)
+				err = CreateAccount(database, &tt.destAccount)
 				assert.NoError(t, err)
 			}
 
 			// When transferring from one account to the other
-			err = db.ProcessTransaction(database, &tt.transaction)
+			err = ProcessTransaction(database, &tt.transaction)
 			// Expect error or no error
 			if tt.expectedError != nil {
 				if errors.Is(tt.expectedError, sql.ErrNoRows) {
@@ -176,20 +255,20 @@ func TestConcurrentTransactions(t *testing.T) {
 	defer database.Close()
 
 	// Create 3 accounts with initial balances
-	account1 := db.Account{AccountID: 1, Balance: 1000.0}
-	account2 := db.Account{AccountID: 2, Balance: 1000.0}
-	account3 := db.Account{AccountID: 3, Balance: 1000.0}
+	account1 := Account{AccountID: 1, Balance: 1000.0}
+	account2 := Account{AccountID: 2, Balance: 1000.0}
+	account3 := Account{AccountID: 3, Balance: 1000.0}
 
-	err = db.CreateAccount(database, &account1)
+	err = CreateAccount(database, &account1)
 	assert.NoError(t, err)
-	err = db.CreateAccount(database, &account2)
+	err = CreateAccount(database, &account2)
 	assert.NoError(t, err)
-	err = db.CreateAccount(database, &account3)
+	err = CreateAccount(database, &account3)
 	assert.NoError(t, err)
 
 	// Define a function to process a transaction
-	processTransaction := func(transaction *db.Transaction) {
-		err = db.ProcessTransaction(database, transaction)
+	processTransaction := func(transaction *Transaction) {
+		err = ProcessTransaction(database, transaction)
 	}
 
 	// Create a wait group to wait for all transactions to complete
@@ -199,10 +278,10 @@ func TestConcurrentTransactions(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func() {
-			transaction := db.Transaction{
+			transaction := Transaction{
 				SourceAccountID:      1,
 				DestinationAccountID: 2,
-				Amount:               "1.0",
+				Amount:               1.0,
 			}
 			processTransaction(&transaction)
 			wg.Done()
@@ -213,10 +292,10 @@ func TestConcurrentTransactions(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func() {
-			transaction := db.Transaction{
+			transaction := Transaction{
 				SourceAccountID:      3,
 				DestinationAccountID: 2,
-				Amount:               "1.0",
+				Amount:               1.0,
 			}
 			processTransaction(&transaction)
 			wg.Done()

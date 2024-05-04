@@ -4,20 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"log"
-	"strconv"
+	. "takeHomeAssignment/entities"
 	"time"
 )
-
-type Account struct {
-	AccountID int     `json:"account_id" valid:"required"`
-	Balance   float64 `json:"balance" valid:"required"`
-}
-
-type Transaction struct {
-	SourceAccountID      int    `json:"source_account_id" valid:"required"`
-	DestinationAccountID int    `json:"destination_account_id" valid:"required"`
-	Amount               string `json:"amount" valid:"required"`
-}
 
 func QueryAccountByAccountId(DB *sql.DB, accountID int, account *Account) error {
 	err := DB.QueryRow("SELECT account_id, balance FROM account_balance WHERE account_id = $1", accountID).Scan(&account.AccountID, &account.Balance)
@@ -64,41 +53,54 @@ func ProcessTransaction(DB *sql.DB, transaction *Transaction) error {
 	var destBalance float64
 	var destUpdatedAt time.Time
 
-	// Lock both rows at the same time to prevent deadlock
+	var sourceID int
+	var destID int
+	var transactionAmount float64
+
+	// Because we are locking the smaller account ID first
+	// The source and destination will be flipped if original sourceAccountId of transaction is greater
+	// In this case we have to negate the transaction amount
+	if transaction.SourceAccountID > transaction.DestinationAccountID {
+		sourceID = transaction.DestinationAccountID
+		destID = transaction.SourceAccountID
+		transactionAmount = -1 * transaction.Amount // subtract from source
+	} else {
+		sourceID = transaction.SourceAccountID
+		destID = transaction.DestinationAccountID
+		transactionAmount = transaction.Amount
+	}
+
+	// Lock row of smaller ID(sourceID) then destID
 	err = dbtx.QueryRow(`
     WITH source AS (
         SELECT balance, updated_at
         FROM account_balance
-        WHERE account_id = $1
+        WHERE account_id = $1::integer
         FOR UPDATE
     ), dest AS (
         SELECT balance, updated_at
         FROM account_balance
-        WHERE account_id = $2
+        WHERE account_id = $2::integer
         FOR UPDATE
     )
     SELECT source.balance, source.updated_at, dest.balance, dest.updated_at
     FROM source, dest
-`, transaction.SourceAccountID, transaction.DestinationAccountID).Scan(&sourceBalance, &sourceUpdatedAt, &destBalance, &destUpdatedAt)
+`, sourceID, destID).Scan(&sourceBalance, &sourceUpdatedAt, &destBalance, &destUpdatedAt)
 
 	if err != nil {
 		return err
 	}
 
-	transactionAmount, err := strconv.ParseFloat(transaction.Amount, 64)
-	if err != nil {
-		return err
-	}
 	// Calculate the new balances
 	newSourceBalance := sourceBalance - transactionAmount
 	newDestBalance := destBalance + transactionAmount
 
 	// Update the account balances
-	_, err = dbtx.Exec("UPDATE account_balance SET balance = $1, updated_at = $2 WHERE account_id = $3 AND updated_at = $4", newSourceBalance, time.Now(), transaction.SourceAccountID, sourceUpdatedAt)
+	_, err = dbtx.Exec("UPDATE account_balance SET balance = $1, updated_at = $2 WHERE account_id = $3 AND updated_at = $4", newSourceBalance, time.Now(), sourceID, sourceUpdatedAt)
 	if err != nil {
 		return err
 	}
-	_, err = dbtx.Exec("UPDATE account_balance SET balance = $1, updated_at = $2 WHERE account_id = $3 AND updated_at = $4", newDestBalance, time.Now(), transaction.DestinationAccountID, destUpdatedAt)
+	_, err = dbtx.Exec("UPDATE account_balance SET balance = $1, updated_at = $2 WHERE account_id = $3 AND updated_at = $4", newDestBalance, time.Now(), destID, destUpdatedAt)
 	if err != nil {
 		return err
 	}

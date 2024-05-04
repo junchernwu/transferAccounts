@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	. "takeHomeAssignment/db"
+	. "takeHomeAssignment/entities"
 )
 
 var DB *sql.DB
@@ -41,8 +42,10 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", router))
 
 }
+
 func init() {
 	govalidator.SetFieldsRequiredByDefault(true)
+
 }
 
 func createAccount(w http.ResponseWriter, r *http.Request) {
@@ -115,12 +118,7 @@ func addTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	transactionAmount, err := strconv.ParseFloat(tx.Amount, 64)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if transactionAmount <= 0.0 {
+	if tx.Amount <= 0.0 {
 		http.Error(w, "transaction amount cannot be less than or equals to zero", http.StatusBadRequest)
 		return
 	}
@@ -154,9 +152,7 @@ func addTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check that the transfer out account has sufficient balance
-	var transfer_amount float64
-	transfer_amount, err = strconv.ParseFloat(tx.Amount, 64)
-	if account.Balance <= transfer_amount {
+	if account.Balance <= tx.Amount {
 		http.Error(w, "Insufficient balance for transaction to happen", http.StatusBadRequest)
 		return
 	}
