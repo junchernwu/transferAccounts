@@ -172,7 +172,7 @@ func TestProcessTransaction(t *testing.T) {
 			transaction: Transaction{
 				SourceAccountID:      3,
 				DestinationAccountID: 2,
-				Amount:               100.0,
+				Amount:               1000.0,
 			},
 			expectedError: nil,
 		},

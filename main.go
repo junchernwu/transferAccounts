@@ -152,7 +152,7 @@ func addTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check that the transfer out account has sufficient balance
-	if account.Balance <= tx.Amount {
+	if account.Balance < tx.Amount {
 		http.Error(w, "Insufficient balance for transaction to happen", http.StatusBadRequest)
 		return
 	}
