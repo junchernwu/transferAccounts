@@ -1,7 +1,8 @@
 # How to run server
 1. Ensure docker is installed
-2. Run the command to start database```docker-compose up```
-3. Run ```go run main.go```
+2. Run command ```go mod init```
+3. Run the command to start database```docker-compose up```
+4. Run ```go run main.go```
 
 # How to run integration test
 1. Run command ```go test```

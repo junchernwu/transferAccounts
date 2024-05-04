@@ -2,6 +2,7 @@ package entities
 
 import (
 	"encoding/json"
+	"errors"
 	"strconv"
 )
 
@@ -28,5 +29,17 @@ func (t *Transaction) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	t.Amount = amount
+
+	// Check for extra fields
+	var temp map[string]interface{}
+	err = json.Unmarshal(data, &temp)
+	if err != nil {
+		return err
+	}
+	for key := range temp {
+		if key != "source_account_id" && key != "destination_account_id" && key != "amount" {
+			return errors.New("extra field found")
+		}
+	}
 	return nil
 }
