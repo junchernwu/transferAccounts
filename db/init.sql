@@ -17,4 +17,5 @@ CREATE TABLE account_transactions (
                              FOREIGN KEY (account_transfer_out) REFERENCES account_balance(account_id),
                              FOREIGN KEY (account_transfer_in) REFERENCES account_balance(account_id));
 
-CREATE INDEX idx_transaction_account_transfer ON account_transactions (account_transfer_out, account_transfer_in);
+CREATE INDEX idx_transaction_account_transfer ON account_transactions (account_transfer_out, account_transfer_in, amount);
+CREATE INDEX idx_account_balance_accountID ON account_balance (account_id);
