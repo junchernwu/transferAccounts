@@ -51,7 +51,6 @@ func init() {
 func createAccount(w http.ResponseWriter, r *http.Request) {
 	var account Account
 	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
 	err := decoder.Decode(&account)
 
 	if err != nil {
@@ -110,7 +109,6 @@ func addTransaction(w http.ResponseWriter, r *http.Request) {
 	var tx Transaction
 
 	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
 	err := decoder.Decode(&tx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
